@@ -619,4 +619,476 @@ local function sliderRow(pg, label, min, max, default, cb)
     hit.Text = ""
 
     local dragging = false
-    local function up
+    local function update(x)
+        local rel = math.clamp((x - track.AbsolutePosition.X) / track.AbsoluteSize.X, 0, 1)
+        local v = math.floor(min + (max-min)*rel + 0.5)
+        val.Text = tostring(v)
+        fill.Size = UDim2.new(rel, 0, 1, 0)
+        cb(v)
+    end
+    hit.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            dragging = true; update(i.Position.X)
+        end
+    end)
+    UIS.InputChanged:Connect(function(i)
+        if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+            update(i.Position.X)
+        end
+    end)
+    UIS.InputEnded:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+end
+
+local function keybindRow(pg, label, defaultKey, cb)
+    local row = Instance.new("Frame", pg)
+    row.Size = UDim2.new(1, 0, 0, 38)
+    row.BackgroundColor3 = C.card
+    row.BackgroundTransparency = 0.2
+    row.BorderSizePixel = 0
+    row.LayoutOrder = nxt()
+    corner(row, 10)
+    stroke(row, C.borderS, 1, 0.5)
+
+    local lbl = Instance.new("TextLabel", row)
+    lbl.Size = UDim2.new(0.5, 0, 1, 0)
+    lbl.Position = UDim2.new(0, 14, 0, 0)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = label
+    lbl.TextColor3 = C.text
+    lbl.Font = Enum.Font.GothamBold
+    lbl.TextSize = 12
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+
+    local kb = Instance.new("TextButton", row)
+    kb.Size = UDim2.new(0, 100, 0, 24)
+    kb.Position = UDim2.new(1, -114, 0.5, -12)
+    kb.BackgroundColor3 = C.off
+    kb.BackgroundTransparency = 0.2
+    kb.BorderSizePixel = 0
+    kb.Text = defaultKey
+    kb.TextColor3 = C.accent
+    kb.Font = Enum.Font.GothamBold
+    kb.TextSize = 11
+    kb.AutoButtonColor = false
+    corner(kb, 8)
+    stroke(kb, C.borderS, 1, 0.4)
+
+    local listening = false
+    kb.MouseButton1Click:Connect(function()
+        if listening then return end
+        listening = true
+        kb.Text = "Press..."
+        kb.TextColor3 = C.accentS
+        local conn
+        conn = UIS.InputBegan:Connect(function(input, gp)
+            if gp then return end
+            if input.UserInputType == Enum.UserInputType.Keyboard
+            or input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.MouseButton2
+            or input.UserInputType == Enum.UserInputType.MouseButton3 then
+                local key = input.UserInputType ~= Enum.UserInputType.Keyboard and input.UserInputType or input.KeyCode
+                local name = input.UserInputType == Enum.UserInputType.Keyboard
+                    and tostring(input.KeyCode):gsub("Enum.KeyCode.","")
+                    or tostring(input.UserInputType):gsub("Enum.UserInputType.","")
+                kb.Text = name
+                kb.TextColor3 = C.green
+                listening = false
+                cb(key)
+                conn:Disconnect()
+            end
+        end)
+    end)
+end
+
+-- ════════════════════════════════════════════════════════════════
+--  PAGES
+-- ════════════════════════════════════════════════════════════════
+local combatPage = addTab("Combat", "⚔", 1)
+secLabel(combatPage, "Aimbot")
+toggleRow(combatPage, "Enable Aimbot", false, function(v) State.Aimbot = v end)
+toggleRow(combatPage, "Show FOV Circle", true, function(v) State.ShowFOV = v end)
+toggleRow(combatPage, "Lock Teammates", true, function(v) State.LockTeam = v end)
+secLabel(combatPage, "Triggerbot")
+toggleRow(combatPage, "Enable Trigger", false, function(v) State.Trigger = v end)
+keybindRow(combatPage, "Trigger Key", "NONE", function(k) State.TriggerKey = k end)
+secLabel(combatPage, "Tuning")
+sliderRow(combatPage, "Aimbot FOV", 10, 500, 110, function(v) State.AimbotFOV = v end)
+sliderRow(combatPage, "Smoothness", 1, 20, 8, function(v) State.AimbotSmooth = v end)
+
+local uniquePage = addTab("Unique", "⚡", 2)
+secLabel(uniquePage, "Hitbox")
+toggleRow(uniquePage, "Enable Hitbox", false, function(v)
+    State.HitboxEnabled = v
+    local char = LocalPlayer.Character
+    if not char then return end
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.Character then
+            local head = p.Character:FindFirstChild("Head")
+            if head then
+                if v then
+                    head.Size = Vector3.new(State.HitboxSize, State.HitboxSize, State.HitboxSize)
+                    head.Transparency = 0.5
+                    head.CanCollide = false
+                else
+                    head.Size = Vector3.new(2,1,1)
+                    head.Transparency = 0
+                end
+            end
+        end
+    end
+end)
+sliderRow(uniquePage, "Hitbox Size", 2, 20, 5, function(v)
+    State.HitboxSize = v
+    if State.HitboxEnabled then
+        for _, p in ipairs(Players:GetPlayers()) do
+            if p ~= LocalPlayer and p.Character then
+                local head = p.Character:FindFirstChild("Head")
+                if head then head.Size = Vector3.new(v, v, v) end
+            end
+        end
+    end
+end)
+
+secLabel(uniquePage, "Safety & Control")
+toggleRow(uniquePage, "Anti-Void", false, function(v) State.AntiVoid = v end)
+toggleRow(uniquePage, "Mouse Lock", false, function(v) State.MouseLock = v end)
+
+local movePage = addTab("Movement", "🏃", 3)
+secLabel(movePage, "Character")
+sliderRow(movePage, "Walk Speed", 16, 200, 16, function(v)
+    State.WalkSpeed = v
+    local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+    if hum then hum.WalkSpeed = v end
+end)
+sliderRow(movePage, "Jump Power", 50, 300, 50, function(v)
+    State.JumpPower = v
+    local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+    if hum then hum.JumpPower = v end
+end)
+secLabel(movePage, "Abilities")
+toggleRow(movePage, "Infinite Jump", false, function(v) State.InfJump = v end)
+toggleRow(movePage, "Noclip", false, function(v) State.Noclip = v end)
+toggleRow(movePage, "Fly", false, function(v)
+    State.Fly = v
+    local char = LocalPlayer.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    if v then
+        local bv = Instance.new("BodyVelocity")
+        bv.Name = "DX_Fly"
+        bv.MaxForce = Vector3.new(1e5,1e5,1e5)
+        bv.Velocity = Vector3.zero
+        bv.Parent = hrp
+        local bg = Instance.new("BodyGyro")
+        bg.Name = "DX_FlyGyro"
+        bg.MaxTorque = Vector3.new(1e5,1e5,1e5)
+        bg.P = 1000
+        bg.D = 50
+        bg.CFrame = hrp.CFrame
+        bg.Parent = hrp
+    else
+        for _, n in ipairs({"DX_Fly","DX_FlyGyro"}) do
+            local o = hrp:FindFirstChild(n)
+            if o then o:Destroy() end
+        end
+    end
+end)
+sliderRow(movePage, "Fly Speed", 10, 400, 80, function(v) State.FlySpeed = v end)
+
+local visPage = addTab("Visuals", "👁", 4)
+secLabel(visPage, "Player ESP")
+toggleRow(visPage, "Player ESP", false, function(v) State.ESP = v end)
+toggleRow(visPage, "Show Teammates", false, function(v) State.ESPTeam = v end)
+secLabel(visPage, "Lighting")
+toggleRow(visPage, "Fullbright", false, function(v)
+    State.Fullbright = v
+    if v then
+        Lighting.Ambient = Color3.fromRGB(255,255,255)
+        Lighting.OutdoorAmbient = Color3.fromRGB(255,255,255)
+        Lighting.Brightness = 2
+    else
+        Lighting.Ambient = Color3.fromRGB(70,70,70)
+        Lighting.OutdoorAmbient = Color3.fromRGB(128,128,128)
+        Lighting.Brightness = 1
+    end
+end)
+
+local cfgPage = addTab("Settings", "⚙", 5)
+secLabel(cfgPage, "Keybinds")
+keybindRow(cfgPage, "Toggle UI", "Q", function(k) State.UIKey = k end)
+secLabel(cfgPage, "Info")
+local infoLbl = Instance.new("TextLabel", cfgPage)
+infoLbl.Size = UDim2.new(1, 0, 0, 60)
+infoLbl.BackgroundTransparency = 1
+infoLbl.Text = "DoyxHub\nNeon Horizon Edition\nKeyless · Free"
+infoLbl.TextColor3 = C.dim
+infoLbl.Font = Enum.Font.Gotham
+infoLbl.TextSize = 11
+infoLbl.TextXAlignment = Enum.TextXAlignment.Left
+infoLbl.TextYAlignment = Enum.TextYAlignment.Top
+infoLbl.LayoutOrder = nxt()
+
+setPage("Combat")
+
+-- ════════════════════════════════════════════════════════════════
+--  ESP SYSTEM
+-- ════════════════════════════════════════════════════════════════
+local ESPTable, PlayerCache = {}, {}
+
+local function isTeammate(p)
+    return LocalPlayer.Team and p.Team == LocalPlayer.Team
+end
+
+local function createESP(player)
+    if player == LocalPlayer then return end
+    local function onChar(char)
+        local root = char:WaitForChild("HumanoidRootPart", 5)
+        if not root then return end
+        local box = Instance.new("BoxHandleAdornment", workspace)
+        box.Adornee = char
+        box.Size = Vector3.new(4, 6, 2)
+        box.AlwaysOnTop = true
+        box.ZIndex = 5
+        box.Transparency = 0.55
+        box.Color3 = C.cyan
+        box.Visible = false
+        ESPTable[player] = { Box = box, Char = char }
+    end
+    if player.Character then onChar(player.Character) end
+    player.CharacterAdded:Connect(onChar)
+end
+
+local function addPlayer(p)
+    if p ~= LocalPlayer then
+        PlayerCache[p] = true
+        createESP(p)
+    end
+end
+
+local function removePlayer(p)
+    PlayerCache[p] = nil
+    if ESPTable[p] then
+        for _, v in pairs(ESPTable[p]) do
+            if typeof(v) == "Instance" then v:Destroy() end
+        end
+        ESPTable[p] = nil
+    end
+end
+
+for _, p in ipairs(Players:GetPlayers()) do addPlayer(p) end
+Players.PlayerAdded:Connect(addPlayer)
+Players.PlayerRemoving:Connect(removePlayer)
+
+-- ════════════════════════════════════════════════════════════════
+--  AIMBOT + TRIGGER
+-- ════════════════════════════════════════════════════════════════
+local isSimulating = false
+
+local function isKeyHeld(key)
+    if not key then return false end
+    if typeof(key) == "EnumItem" and key.EnumType == Enum.KeyCode then
+        return UIS:IsKeyDown(key)
+    elseif key == Enum.UserInputType.MouseButton1 then
+        return UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
+    elseif key == Enum.UserInputType.MouseButton2 then
+        return UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton2)
+    elseif key == Enum.UserInputType.MouseButton3 then
+        return UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton3)
+    end
+    return false
+end
+
+local function findClosestTarget()
+    local center = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+    local best, bestDist = nil, State.AimbotFOV
+    for p in pairs(PlayerCache) do
+        local char = p.Character
+        if char then
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            local part = char:FindFirstChild("Head") or char:FindFirstChild("HumanoidRootPart")
+            if hum and hum.Health > 0 and part then
+                if not (State.LockTeam and isTeammate(p)) then
+                    local pos, onScreen = Camera:WorldToViewportPoint(part.Position)
+                    if onScreen then
+                        local dist = (Vector2.new(pos.X, pos.Y) - center).Magnitude
+                        if dist < bestDist then
+                            best = part
+                            bestDist = dist
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return best
+end
+
+local function isLookingAtEnemy()
+    local unitRay = Camera:ScreenPointToRay(UIS:GetMouseLocation().X, UIS:GetMouseLocation().Y)
+    local params = RaycastParams.new()
+    params.FilterDescendantsInstances = { LocalPlayer.Character }
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    local result = workspace:Raycast(unitRay.Origin, unitRay.Direction * 1000, params)
+    if not result then return nil end
+    local model = result.Instance:FindFirstAncestorOfClass("Model")
+    if not model then return nil end
+    local hum = model:FindFirstChildOfClass("Humanoid")
+    if not hum then return nil end
+    local targetPlayer = Players:GetPlayerFromCharacter(model)
+    if targetPlayer and (State.LockTeam and isTeammate(targetPlayer)) then return nil end
+    return model
+end
+
+local function startSimulate()
+    if isSimulating then return end
+    isSimulating = true
+    pcall(function()
+        VirtualInput:SendMouseButtonEvent(0, 0, 0, true, game, 0)
+    end)
+end
+
+local function stopSimulate()
+    if not isSimulating then return end
+    isSimulating = false
+    pcall(function()
+        VirtualInput:SendMouseButtonEvent(0, 0, 0, false, game, 0)
+    end)
+end
+
+-- ════════════════════════════════════════════════════════════════
+--  RENDER LOOP
+-- ════════════════════════════════════════════════════════════════
+local espTick, aimTick, trigTick = 0, 0, 0
+local ESP_INTERVAL = 0.1
+local AIM_INTERVAL = 0.02
+local TRIG_INTERVAL = 0.05
+
+RunService.RenderStepped:Connect(function(dt)
+    espTick = espTick + dt
+    aimTick = aimTick + dt
+    trigTick = trigTick + dt
+
+    local doESP = espTick >= ESP_INTERVAL
+    local doAim = aimTick >= AIM_INTERVAL
+    local doTrig = trigTick >= TRIG_INTERVAL
+    if doESP then espTick = 0 end
+    if doAim then aimTick = 0 end
+    if doTrig then trigTick = 0 end
+
+    -- FOV Circle Render
+    if FOVCircle then
+        FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+        FOVCircle.Radius = State.AimbotFOV
+        FOVCircle.Color = C.cyan
+        FOVCircle.Visible = State.ShowFOV and State.Aimbot
+    end
+
+    if doESP then
+        for p in pairs(PlayerCache) do
+            local e = ESPTable[p]
+            if e and e.Char then
+                local hum = e.Char:FindFirstChildOfClass("Humanoid")
+                if hum and hum.Health > 0 then
+                    local tOK = not isTeammate(p) or State.ESPTeam
+                    e.Box.Visible = State.ESP and tOK
+                else
+                    e.Box.Visible = false
+                end
+            end
+        end
+    end
+
+    if State.Aimbot then
+        local target = findClosestTarget()
+        if target then
+            local camPos = Camera.CFrame.Position
+            local goal = CFrame.new(camPos, target.Position)
+            local smooth = math.clamp(State.AimbotSmooth, 1, 20)
+            Camera.CFrame = Camera.CFrame:Lerp(goal, 1 / smooth)
+        end
+    end
+
+    if State.Trigger then
+        local active = false
+        if State.TriggerKey then active = isKeyHeld(State.TriggerKey) end
+        if active and isLookingAtEnemy() then startSimulate() else stopSimulate() end
+    else
+        stopSimulate()
+    end
+
+    local char = LocalPlayer.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+
+    -- Anti-Void
+    if State.AntiVoid and hrp and hum then
+        if hrp.Position.Y < -50 then
+            hrp.CFrame = CFrame.new(0, 20, 0)
+        end
+    end
+
+    -- Mouse Lock
+    if State.MouseLock then
+        UIS.MouseBehavior = Enum.MouseBehavior.LockCenter
+    elseif not State.MouseLock and UIS.MouseBehavior == Enum.MouseBehavior.LockCenter then
+        UIS.MouseBehavior = Enum.MouseBehavior.Default
+    end
+
+    if State.Noclip and char then
+        for _, part in ipairs(char:GetDescendants()) do
+            if part:IsA("BasePart") and part.CanCollide then
+                part.CanCollide = false
+            end
+        end
+    end
+
+    if State.Fly and hrp then
+        local bv = hrp:FindFirstChild("DX_Fly")
+        local bg = hrp:FindFirstChild("DX_FlyGyro")
+        if bv and bg and hum then
+            local cam = Camera.CFrame
+            local move = Vector3.zero
+            if UIS:IsKeyDown(Enum.KeyCode.W) then move = move + cam.LookVector end
+            if UIS:IsKeyDown(Enum.KeyCode.S) then move = move - cam.LookVector end
+            if UIS:IsKeyDown(Enum.KeyCode.A) then move = move - cam.RightVector end
+            if UIS:IsKeyDown(Enum.KeyCode.D) then move = move + cam.RightVector end
+            if UIS:IsKeyDown(Enum.KeyCode.Space) then move = move + Vector3.new(0,1,0) end
+            if UIS:IsKeyDown(Enum.KeyCode.LeftControl) then move = move - Vector3.new(0,1,0) end
+            bv.Velocity = move * State.FlySpeed
+            bg.CFrame = cam
+            hum.PlatformStand = true
+        end
+    else
+        if hum and hum.PlatformStand then hum.PlatformStand = false end
+    end
+end)
+
+UIS.JumpRequest:Connect(function()
+    if State.InfJump then
+        local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+        if hum then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
+    end
+end)
+
+LocalPlayer.CharacterAdded:Connect(function(char)
+    local hum = char:WaitForChild("Humanoid", 5)
+    if hum then
+        hum.WalkSpeed = State.WalkSpeed
+        hum.JumpPower = State.JumpPower
+    end
+end)
+
+UIS.InputBegan:Connect(function(i, gp)
+    if gp then return end
+    if i.KeyCode == State.UIKey then
+        Gui.Enabled = not Gui.Enabled
+        if Gui.Enabled then FloatGui.Enabled = false end
+    end
+end)
+
+print("[DoyxHub] Loaded | Neon Horizon Edition")
